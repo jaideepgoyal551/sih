@@ -1,0 +1,284 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  GOVERNMENT
+  STARTUP
+  EVALUATOR
+}
+
+enum ProblemStatus {
+  DRAFT
+  PUBLISHED
+  UNDER_EVALUATION
+  PILOT
+  COMPLETED
+  CLOSED
+}
+
+enum ProposalStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  SHORTLISTED
+  REJECTED
+  SELECTED
+  PILOT
+  COMPLETED
+}
+
+enum PilotStatus {
+  PLANNED
+  ACTIVE
+  AT_RISK
+  COMPLETED
+  CANCELLED
+}
+
+enum KpiStatus {
+  ON_TRACK
+  AT_RISK
+  OFF_TRACK
+  ACHIEVED
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  DELAYED
+}
+
+enum ProcurementDecision {
+  SCALE
+  EXTEND_PILOT
+  MODIFY
+  CLOSE
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ALERT
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  governmentDepartment GovernmentDepartment?
+  startup              Startup?
+  evaluations          Evaluation[]
+  notifications        Notification[]
+  auditLogs            AuditLog[]
+  documents            Document[]
+}
+
+model GovernmentDepartment {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  departmentName String
+  departmentType String
+  designation    String
+  description    String?
+  createdAt      DateTime @default(now())
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problems ProblemStatement[]
+}
+
+model Startup {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  startupName  String
+  industry     String
+  description  String?
+  technologies String?
+  website      String?
+  location     String?
+  teamSize     Int?
+  foundedYear  Int?
+  verified     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  proposals Proposal[]
+}
+
+model ProblemStatement {
+  id                     String        @id @default(uuid())
+  departmentId           String
+  title                  String
+  description            String
+  category               String
+  technologyRequirements String?
+  objectives             String?
+  expectedOutcomes       String?
+  budget                 Decimal?      @db.Decimal(12, 2)
+  duration               String?
+  eligibilityCriteria    String?
+  status                 ProblemStatus @default(DRAFT)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  department GovernmentDepartment @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  proposals  Proposal[]
+  documents  Document[]           @relation("DocumentProblem")
+}
+
+model Proposal {
+  id                  String         @id @default(uuid())
+  problemId           String
+  startupId           String
+  title               String
+  solutionDescription String
+  technicalApproach   String
+  technologies        String?
+  estimatedCost       Decimal?       @db.Decimal(12, 2)
+  timeline            String?
+  expectedImpact      String?
+  status              ProposalStatus @default(SUBMITTED)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  problem    ProblemStatement @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  startup    Startup          @relation(fields: [startupId], references: [id], onDelete: Cascade)
+  evaluation Evaluation?
+  pilot      Pilot?
+  documents  Document[]       @relation("DocumentProposal")
+}
+
+model Evaluation {
+  id               String   @id @default(uuid())
+  proposalId       String   @unique
+  evaluatorId      String
+  innovationScore  Float?
+  technicalScore   Float?
+  feasibilityScore Float?
+  costScore        Float?
+  scalabilityScore Float?
+  complianceScore  Float?
+  comments         String?
+  conflictDeclared Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  proposal  Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  evaluator User     @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
+}
+
+model Pilot {
+  id              String      @id @default(uuid())
+  proposalId      String      @unique
+  startDate       DateTime?
+  endDate         DateTime?
+  status          PilotStatus @default(PLANNED)
+  objectives      String?
+  scope           String?
+  budget          Decimal?    @db.Decimal(12, 2)
+  overallProgress Float?      @default(0)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  proposal    Proposal     @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  kpis        KPI[]
+  milestones  Milestone[]
+  procurement Procurement?
+  documents   Document[]   @relation("DocumentPilot")
+}
+
+model KPI {
+  id          String    @id @default(uuid())
+  pilotId     String
+  name        String
+  description String?
+  targetValue Float?
+  actualValue Float?
+  unit        String?
+  status      KpiStatus @default(ON_TRACK)
+  createdAt   DateTime  @default(now())
+
+  pilot Pilot @relation(fields: [pilotId], references: [id], onDelete: Cascade)
+}
+
+model Milestone {
+  id          String          @id @default(uuid())
+  pilotId     String
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      MilestoneStatus @default(PENDING)
+  completedAt DateTime?
+
+  pilot Pilot @relation(fields: [pilotId], references: [id], onDelete: Cascade)
+}
+
+model Procurement {
+  id                   String               @id @default(uuid())
+  pilotId              String               @unique
+  readinessScore       Float?
+  technicalReadiness   Float?
+  financialReadiness   Float?
+  scalabilityReadiness Float?
+  complianceReadiness  Float?
+  decision             ProcurementDecision?
+  comments             String?
+  createdAt            DateTime             @default(now())
+
+  pilot Pilot @relation(fields: [pilotId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType @default(INFO)
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Document {
+  id         String   @id @default(uuid())
+  uploadedBy String
+  entityType String
+  entityId   String
+  fileName   String
+  filePath   String
+  fileType   String
+  createdAt  DateTime @default(now())
+
+  problemId  String?
+  proposalId String?
+  pilotId    String?
+
+  uploadedByUser User?             @relation(fields: [uploadedBy], references: [id], onDelete: Cascade)
+  problem        ProblemStatement? @relation("DocumentProblem", fields: [problemId], references: [id], onDelete: Cascade)
+  proposal       Proposal?         @relation("DocumentProposal", fields: [proposalId], references: [id], onDelete: Cascade)
+  pilot          Pilot?            @relation("DocumentPilot", fields: [pilotId], references: [id], onDelete: Cascade)
+}
